@@ -3,13 +3,14 @@ import subprocess
 import sys
 import os
 import shutil
+import argparse
+import stat
 
 # Definimos las librerías necesarias en una lista
-REQUIRED_PACKAGES = ['git', 'nodejs', 'npm','python3-dateutil']
+REQUIRED_PACKAGES = ['git', 'nodejs', 'npm', 'python3-dateutil']
 BASE_PATH = '/usr/local/device'
 
 def system_update_and_upgrade():
-    '''Se realiza la actualizacion del software de la maquina'''
     print("Actualizando lista de paquetes y mejorando el sistema...")
     try:
         subprocess.run(['apt', 'update'], check=True)
@@ -18,8 +19,8 @@ def system_update_and_upgrade():
     except subprocess.CalledProcessError as e:
         print(f"Error durante la actualización del sistema: {e}")
         sys.exit(1)
+
 def check_and_install(packages):
-    '''Se realiza la instalacion de las dependencias necesarias'''
     for package in packages:
         print(f"Verificando: {package}")
         result = subprocess.run(['dpkg', '-s', package], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -35,31 +36,24 @@ def check_and_install(packages):
             print(f"{package} ya está instalado.")
 
 def ensure_base_directory(base_path):
-    """ Verifica o crea el directorio base y lo asigna como directorio actual (CWD) """
     if not os.path.exists(base_path):
         try:
             os.makedirs(base_path)
             print(f"Directorio base creado: {base_path}")
-           
-            # Solicitar nombre del dispositivo y crear device.id
             device_name = input("Introduce el nombre del dispositivo: ").strip()
             device_id_path = os.path.join(base_path, "device.id")
-           
             with open(device_id_path, "w") as f:
                 f.write(device_name + "\n")
-           
             print(f"Archivo device.id creado en: {device_id_path}")
         except PermissionError:
             print(f"No se pudo crear el directorio base: {base_path}. Permiso denegado.")
             sys.exit(1)
     else:
         print(f"El directorio base ya existe: {base_path}")
-   
     os.chdir(base_path)
     print(f"Directorio actual asignado: {os.getcwd()}")
 
 def create_directories(directories):
-    """ Crea los subdirectorios necesarios dentro del directorio base """
     for directory in directories:
         path = os.path.join(os.getcwd(), directory)
         if not os.path.exists(path):
@@ -73,16 +67,9 @@ def create_directories(directories):
             print(f"El directorio ya existe: {path}")
 
 def clone_repository(install_path, repo_url):
-    """
-    Clona un repositorio en el path especificado.
-    Si ya existe, realiza un pull para actualizarlo.
-    """
     full_path = os.path.join(os.getcwd(), install_path)
-   
     if os.path.exists(full_path):
         print(f"El repositorio ya existe en: {full_path}")
-       
-        # Nos aseguramos de que el directorio sea un repositorio válido
         if os.path.exists(os.path.join(full_path, ".git")):
             try:
                 print(f"Actualizando el repositorio en: {full_path}")
@@ -103,10 +90,6 @@ def clone_repository(install_path, repo_url):
             sys.exit(1)
 
 def copy_files(file_list, source_path, destination_path):
-    """
-    Copia una lista de archivos desde un directorio origen a un directorio destino.
-    Crea la estructura completa del directorio si no existe.
-    """
     if not os.path.exists(destination_path):
         try:
             os.makedirs(destination_path, exist_ok=True)
@@ -114,13 +97,10 @@ def copy_files(file_list, source_path, destination_path):
         except PermissionError:
             print(f"No se pudo crear el directorio: {destination_path}. Permiso denegado.")
             sys.exit(1)
-   
     for file_name in file_list:
         src_file = os.path.join(source_path, file_name)
         dest_file = os.path.join(destination_path, file_name)
-
         if os.path.exists(src_file):
-            # Verificamos si el directorio padre existe en el destino, si no, lo creamos.
             os.makedirs(os.path.dirname(dest_file), exist_ok=True)
             shutil.copy2(src_file, dest_file)
             print(f"Archivo copiado: {src_file} -> {dest_file}")
@@ -131,45 +111,25 @@ def register_and_start_service(service_file_path):
     if not os.path.isfile(service_file_path):
         print(f"Error: El archivo {service_file_path} no existe.")
         sys.exit(1)
-   
     service_filename = os.path.basename(service_file_path)
     target_link = os.path.join("/etc/systemd/system", service_filename)
-
     try:
-        # Asignar permisos de ejecución al script
         print(f"Asignando permisos de ejecución al archivo: {service_file_path}")
         subprocess.run(['chmod', '+x', service_file_path], check=True)
-
-        # Si el enlace ya existe, eliminarlo primero
         if os.path.islink(target_link) or os.path.exists(target_link):
             os.remove(target_link)
             print(f"Eliminado enlace o archivo previo: {target_link}")
-
-        # Crear enlace simbólico
         subprocess.run(['ln', '-s', service_file_path, target_link], check=True)
         print(f"Enlace simbólico creado: {target_link}")
-
-        # Recargar systemd para detectar el nuevo servicio
         subprocess.run(['systemctl', 'daemon-reload'], check=True)
-
-        # Habilitar el servicio para que arranque al inicio
         subprocess.run(['systemctl', 'enable', service_filename], check=True)
-
-        # Iniciar el servicio ahora
         subprocess.run(['systemctl', 'start', service_filename], check=True)
-
         print(f"Servicio {service_filename} habilitado e iniciado correctamente.")
     except subprocess.CalledProcessError as e:
         print(f"Error al registrar o iniciar el servicio: {e}")
         sys.exit(1)
 
 def overwrite_file(file_path, content):
-    """
-    Sobrescribe un archivo con el contenido especificado.
-   
-    :param file_path: Ruta completa del archivo a sobrescribir.
-    :param content: Contenido nuevo que se escribirá en el archivo.
-    """
     try:
         with open(file_path, 'w') as file:
             file.write(content)
@@ -180,30 +140,42 @@ def overwrite_file(file_path, content):
         print(f"Error al sobrescribir el archivo: {e}")
 
 def create_file(directory, filename, content):
-    """
-    Crea un archivo con el contenido especificado en el directorio indicado.
-   
-    :param directory: Ruta del directorio donde se creará el archivo.
-    :param filename: Nombre del archivo a crear.
-    :param content: Contenido que se escribirá en el archivo.
-    """
     try:
-        # Asegurarse de que el directorio exista
         os.makedirs(directory, exist_ok=True)
-       
-        # Ruta completa del archivo
         file_path = os.path.join(directory, filename)
-       
-        # Crear y escribir el archivo
         with open(file_path, 'w') as file:
             file.write(content)
-       
         print(f"Archivo creado exitosamente: {file_path}")
     except PermissionError:
         print(f"Permiso denegado al crear el archivo en: {directory}")
     except Exception as e:
         print(f"Error al crear el archivo: {e}")
 
+def copy_directory(source_path, destination_path):
+    """
+    Copia recursivamente un directorio completo.
+    Si el destino existe, lo sobrescribe.
+    """
+    try:
+        shutil.copytree(source_path, destination_path, dirs_exist_ok=True)
+        print(f"Directorio copiado: {source_path} -> {destination_path}")
+    except PermissionError:
+        print(f"No se pudo copiar el directorio: {destination_path}. Permiso denegado.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error al copiar directorio: {e}")
+        sys.exit(1)
+
+def set_executable(file_path):
+    try:
+        st = os.stat(file_path)
+        os.chmod(file_path, st.st_mode | stat.S_IEXEC)
+        print(f"Permiso de ejecución asignado a: {file_path}")
+    except Exception as e:
+        print(f"Error al asignar permiso de ejecución a {file_path}: {e}")
+# ====================
+# Acciones disponibles
+# ====================
 
 def accion_ipc_control():
     DIRECTORIES= {'nodejs','services','services/ipc.control'}
@@ -239,11 +211,8 @@ def accion_ipc_xgraphic():
     [Install]
     WantedBy=multi-user.target
     '''
-
-    # Reemplazar el usuario estático por el usuario actual
     content = content.replace('User=infomedia', f'Environment="XAUTHORITY=/home/{current_user}/.Xauthority"')
     content = content.replace('User=infomedia', f'User={current_user}')
-
     ensure_base_directory(BASE_PATH)
     create_directories(DIRECTORIES)
     clone_repository('nodejs/ipc.xgraphic', 'https://mqtt.infomediaservice.com/git/nodejs/ipc.xgraphic.git')
@@ -272,56 +241,58 @@ def accion_vmachine():
 def accion_locker():
     print("Ejecutando acción para Locker...")
 
-def menu():
-    options = [
-        "ipc.control",
-        "ipc.xgraphic",
-        "dispenser",
-        "VMachine",
-        "Locker",
-        "Exit"
-    ]
+def accion_openbeer():
+    DIRECTORIES = {'nodejs', 'services', 'services/OpenBeer'}
 
-    print("Seleccine el servicio a instalar:")
-    print("")
-    for i, option in enumerate(options, start=1):
-        print(f"{i}. {option}")
+    ensure_base_directory(BASE_PATH)
+    create_directories(DIRECTORIES)
+    clone_repository('nodejs/OpenBeer', 'https://github.com/Juan8370/OpenBeer.git')
+    copy_directory('/usr/local/device/nodejs/OpenBeer/OpenBeer', '/usr/local/device/services')
+    set_executable('/usr/local/device/services/OpenBeer/OpenBeer.sh')
+    register_and_start_service('/usr/local/device/services/OpenBeer/OpenBeer.service')
 
-    while True:
-        try:
-            choice = int(input("Ingresa el número de la opción: "))
-            if 1 <= choice <= len(options):
-                return options[choice - 1]
-            else:
-                print(f"Por favor ingresa un número entre 1 y {len(options)}.")
-        except ValueError:
-            print("Entrada inválida. Por favor ingresa un número.")
+
+    print("""
+    NOTA:
+    El proyecto OpenBeer se ha instalado. 
+    Recuerde revisar y ajustar la configuración en:
+      /usr/local/device/services/openbeer/openbeer.json
+    """)
+
+
+
+# ====================
+# Main con argparse
+# ====================
 
 def main():
-
     if os.geteuid() != 0:
         print("Este script debe ejecutarse como root.")
         sys.exit(1)
+
+    parser = argparse.ArgumentParser(description="Instalador de servicios IoT")
+    parser.add_argument(
+        "servicio",
+        choices=["ipc.control", "ipc.xgraphic", "dispenser", "VMachine", "Locker"],
+        help="Servicio a instalar"
+    )
+    args = parser.parse_args()
+
     system_update_and_upgrade()
     check_and_install(REQUIRED_PACKAGES)
-    while True:
-        seleccion = menu()
 
-        if seleccion == "ipc.control":
-            accion_ipc_control()
-        elif seleccion == "ipc.xgraphic":
-            accion_ipc_xgraphic()
-        elif seleccion == "dispenser":
-            accion_dispenser()
-        elif seleccion == "VMachine":
-            accion_vmachine()
-        elif seleccion == "Locker":
-            accion_locker()
-        elif seleccion == "Exit":
-             sys.exit(1)
+    if args.servicio == "ipc.control":
+        accion_ipc_control()
+    elif args.servicio == "ipc.xgraphic":
+        accion_ipc_xgraphic()
+    elif args.servicio == "dispenser":
+        accion_dispenser()
+    elif args.servicio == "openbeer":
+        accion_openbeer()
+    elif args.servicio == "VMachine":
+        accion_vmachine()
+    elif args.servicio == "Locker":
+        accion_locker()
 
 if __name__ == "__main__":
-   
     main()
-
-
