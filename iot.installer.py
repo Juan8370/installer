@@ -13,8 +13,8 @@ BASE_PATH = '/usr/local/device'
 def system_update_and_upgrade():
     print("Actualizando lista de paquetes y mejorando el sistema...")
     try:
-        subprocess.run(['apt', 'update'], check=True)
-        subprocess.run(['apt', 'upgrade', '-y'], check=True)
+        #subprocess.run(['apt', 'update'], check=True)
+        #subprocess.run(['apt', 'upgrade', '-y'], check=True)
         print("Sistema actualizado correctamente.")
     except subprocess.CalledProcessError as e:
         print(f"Error durante la actualización del sistema: {e}")
@@ -168,11 +168,47 @@ def copy_directory(source_path, destination_path):
 
 def set_executable(file_path):
     try:
-        st = os.stat(file_path)
-        os.chmod(file_path, st.st_mode | stat.S_IEXEC)
+        subprocess.run(['chmod', '+x', file_path])
         print(f"Permiso de ejecución asignado a: {file_path}")
     except Exception as e:
         print(f"Error al asignar permiso de ejecución a {file_path}: {e}")
+
+def npm_install(carpeta):
+    """
+    Ejecuta 'npm install' en la carpeta especificada.
+    """
+    if not os.path.exists(carpeta):
+        print(f"Error: la carpeta {carpeta} no existe")
+        sys.exit(1)
+    
+    try:
+        print(f"Ejecutando 'npm install' en {carpeta}...")
+        subprocess.run(['npm', 'install'], cwd=carpeta, check=True)
+        print(f"'npm install' completado en {carpeta}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error al ejecutar 'npm install' en {carpeta}: {e}")
+        sys.exit(1)
+
+
+def habilitar_electron():
+    electron_path = "/usr/local/device/nodejs/OpenBeer/node_modules/electron/dist"
+    chrome_sandbox = os.path.join(electron_path, "chrome-sandbox")
+
+    if not os.path.exists(chrome_sandbox):
+        print(f"Error: no se encuentra {chrome_sandbox}")
+        sys.exit(1)
+
+    try:
+        # Cambiar propietario a root:root
+        subprocess.run(['sudo', 'chown', 'root:root', chrome_sandbox], check=True)
+        print(f"Propietario de {chrome_sandbox} cambiado a root:root")
+
+        # Asignar permisos 4755 (setuid root)
+        subprocess.run(['sudo', 'chmod', '4755', chrome_sandbox], check=True)
+        print(f"Permisos de {chrome_sandbox} establecidos en 4755")
+    except subprocess.CalledProcessError as e:
+        print(f"Error al habilitar Electron: {e}")
+        sys.exit(1)
 # ====================
 # Acciones disponibles
 # ====================
@@ -247,7 +283,9 @@ def accion_openbeer():
     ensure_base_directory(BASE_PATH)
     create_directories(DIRECTORIES)
     clone_repository('nodejs/OpenBeer', 'https://github.com/Juan8370/OpenBeer.git')
-    copy_directory('/usr/local/device/nodejs/OpenBeer/OpenBeer', '/usr/local/device/services')
+    npm_install('nodejs/OpenBeer')
+    habilitar_electron()
+    copy_directory('/usr/local/device/nodejs/OpenBeer/OpenBeer', '/usr/local/device/services/OpenBeer')
     set_executable('/usr/local/device/services/OpenBeer/OpenBeer.sh')
     register_and_start_service('/usr/local/device/services/OpenBeer/OpenBeer.service')
 
@@ -273,7 +311,7 @@ def main():
     parser = argparse.ArgumentParser(description="Instalador de servicios IoT")
     parser.add_argument(
         "servicio",
-        choices=["ipc.control", "ipc.xgraphic", "dispenser", "VMachine", "Locker"],
+        choices=["ipc.control", "ipc.xgraphic", "dispenser", "VMachine", "Locker","openbeer"],
         help="Servicio a instalar"
     )
     args = parser.parse_args()
