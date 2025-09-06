@@ -262,13 +262,13 @@ def accion_dispenser():
     Recuerde cambiar la configuracion de la maquina en el archivo dispenser.json de acuerdo a las necesidades de la maquina.
     Para que funcione correctamente, se debe tener el hardware correctamente instalado.
     '''
-    DIRECTORIES= {'python','services','services/dispenser'}
+    DIRECTORIES= {'python','services','services/dispenser-2.4'}
     file_list= {'dispenser.sh','dispenser.json','dispenser.service'}
     ensure_base_directory(BASE_PATH)
     create_directories(DIRECTORIES)
-    clone_repository('python/dispenser', 'https://iot.infomediaservice.com/git/python/dispenser-2.4.git')
-    copy_files(file_list, '/usr/local/device/python/dispenser/bash', '/usr/local/device/services/dispenser')
-    register_and_start_service('/usr/local/device/services/dispenser/dispenser.service')
+    clone_repository('python/dispenser-2.4', 'https://iot.infomediaservice.com/git/python/dispenser-2.4.git')
+    copy_files(file_list, '/usr/local/device/python/dispenser-2.4/bash', '/usr/local/device/services/dispenser-2.4')
+    register_and_start_service('/usr/local/device/services/dispenser-2.4/dispenser.service')
     print(NOTA)
 
 def accion_vmachine():
@@ -278,24 +278,55 @@ def accion_locker():
     print("Ejecutando acción para Locker...")
 
 def accion_openbeer():
-    DIRECTORIES = {'nodejs', 'services', 'services/OpenBeer'}
+    import getpass
+    current_user = getpass.getuser()
 
+    DIRECTORIES = {'nodejs', 'services', 'services/dispenser.front'}
     ensure_base_directory(BASE_PATH)
     create_directories(DIRECTORIES)
-    clone_repository('nodejs/OpenBeer', 'https://github.com/Juan8370/OpenBeer.git')
-    npm_install('nodejs/OpenBeer')
-    habilitar_electron()
-    copy_directory('/usr/local/device/nodejs/OpenBeer/OpenBeer', '/usr/local/device/services/OpenBeer')
-    set_executable('/usr/local/device/services/OpenBeer/OpenBeer.sh')
-    register_and_start_service('/usr/local/device/services/OpenBeer/OpenBeer.service')
 
+    # Clonar y preparar proyecto
+    clone_repository('nodejs/dispenser.front', 'https://github.com/Juan8370/dispenser.front.git')
+    npm_install('nodejs/dispenser.front')
+    copy_directory('/usr/local/device/nodejs/dispenser.front/dispenser.front', '/usr/local/device/services/dispenser.front')
+    register_and_start_service('/usr/local/device/services/dispenser.front/dispenser.front.service')
+    set_executable('/usr/local/device/services/dispenser.front/dispenser.front.sh')
 
+    # Crear carpeta autostart si no existe
+    autostart_path = f"/home/{current_user}/.config/lxsession/LXDE-pi"
+    os.makedirs(autostart_path, exist_ok=True)
+    desktop_file_path = os.path.join(autostart_path, "dispenser.front.desktop")
+
+    # Contenido del archivo .desktop
+    desktop_content = f"""[Desktop Entry]
+Type=Application
+Name=dispenser.front Kiosk
+Exec=chromium-browser --noerrdialogs --disable-infobars --kiosk --incognito \\
+  --disable-translate \\
+  --no-first-run \\
+  --fast \\
+  --fast-start \\
+  --disable-pinch \\
+  --overscroll-history-navigation=0 \\
+  --disable-features=Translate,AutofillAssistant,PasswordManager,NotificationIndicators \\
+  http://127.0.0.1:5500
+X-GNOME-Autostart-enabled=true
+"""
+
+    # Guardar archivo .desktop
+    with open(desktop_file_path, 'w') as f:
+        f.write(desktop_content)
+    os.chmod(desktop_file_path, 0o755)
+    print(f"Archivo de autostart creado: {desktop_file_path}")
+
+    # Mensaje final
     print("""
-    NOTA:
-    El proyecto OpenBeer se ha instalado. 
-    Recuerde revisar y ajustar la configuración en:
-      /usr/local/device/services/openbeer/openbeer.json
-    """)
+NOTA:
+El proyecto dispenser.front se ha instalado.
+Se iniciará automáticamente en Chromium en modo kiosco al iniciar sesión en LXDE.
+Recuerde revisar y ajustar la configuración en:
+  /usr/local/device/services/dispenser.front/dispenser.front.json
+""")
 
 
 
